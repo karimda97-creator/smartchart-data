@@ -18,25 +18,42 @@ permissions:
 
 jobs:
   build-manifest:
+name: Generate Manifest on Release
+
+on:
+  release:
+    types:
+      - published
+      - edited
+
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Release tag to test
+        required: true
+        default: data-v1
+
+permissions:
+  contents: write
+
+jobs:
+  build-manifest:
     runs-on: ubuntu-latest
 
     steps:
+      # --------------------------------------------------
+      # 1. Checkout MAIN
+      # Scripts are stored on main
+      # --------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag_name }}
+          ref: main
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests
-
+      # --------------------------------------------------
+      # 2. Determine release tag
+      # --------------------------------------------------
       - name: Set Release Tag
         env:
           EVENT_TAG: ${{ github.event.release.tag_name }}
@@ -44,6 +61,72 @@ jobs:
         run: |
           if [ -n "$EVENT_TAG" ]; then
             echo "TAG_NAME=$EVENT_TAG" >> "$GITHUB_ENV"
+          else
+            echo "TAG_NAME=$MANUAL_TAG" >> "$GITHUB_ENV"
+          fi
+
+          echo "Release tag: ${EVENT_TAG:-$MANUAL_TAG}"
+
+      # --------------------------------------------------
+      # 3. Replace CSV files with the versions from release tag
+      # --------------------------------------------------
+      - name: Checkout CSV files from Release Tag
+        run: |
+          echo "Checking out CSV files from tag: $TAG_NAME"
+
+          git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+
+          git checkout "$TAG_NAME" -- '*.csv'
+
+          echo "CSV files currently available:"
+          find . -type f -name "*.csv" -print | sort
+
+      # --------------------------------------------------
+      # 4. Setup Python
+      # --------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # --------------------------------------------------
+      # 5. Install dependencies
+      # --------------------------------------------------
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      # --------------------------------------------------
+      # 6. Generate manifest
+      # --------------------------------------------------
+      - name: Generate Manifest
+        env:
+          REPO: ${{ github.repository }}
+          TAG_NAME: ${{ env.TAG_NAME }}
+        run: |
+          python scripts/generate_manifest.py
+
+      # --------------------------------------------------
+      # 7. Show generated manifest
+      # --------------------------------------------------
+      - name: Show Generated Manifest
+        run: |
+          echo "================ MANIFEST ================"
+          cat manifest.json
+          echo "=========================================="
+
+      # --------------------------------------------------
+      # 8. Upload manifest to Release Assets
+      # --------------------------------------------------
+      - name: Upload Manifest to Release Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG_NAME: ${{ env.TAG_NAME }}
+        run: |
+          python scripts/upload_manifest.py
+ "TAG_NAME=$EVENT_TAG" >> "$GITHUB_ENV"
           else
             echo "TAG_NAME=$MANUAL_TAG" >> "$GITHUB_ENV"
           fi
