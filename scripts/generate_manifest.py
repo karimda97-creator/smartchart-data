@@ -15,7 +15,8 @@ def find_time_column(headers):
     normalized = {normalize_header(header): header for header in headers}
     candidates = [
         "timestamp", "time", "datetime", "date",
-        "opentime", "closetime", "opendatetime", "closedatetime"
+        "opentime", "closetime", "opendatetime", "closedatetime",
+        "gmttime", "timeutc", "dateutc"
     ]
     for candidate in candidates:
         if candidate in normalized:
@@ -27,6 +28,7 @@ def timestamp_to_milliseconds(value):
     if not value:
         raise ValueError("Empty timestamp")
 
+    # عدد خام (Unix Timestamp)
     try:
         number = float(value)
         if number < 100_000_000_000:
@@ -43,25 +45,35 @@ def timestamp_to_milliseconds(value):
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
 
+    # تبدیل نقطه‌ها و اسلش‌ها برای یکسان‌سازی
+    text_clean = text.replace(".", "-")
+
     formats = [
         None,
+        "%m/%d/%Y %H:%M:%S",
+        "%m/%d/%Y %H:%M",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d %H:%M",
         "%Y/%m/%d %H:%M:%S",
         "%Y/%m/%d %H:%M",
-        "%m/%d/%Y %H:%M:%S",
-        "%m/%d/%Y %H:%M",
+        "%m-%d-%Y %H:%M:%S",
+        "%m-%d-%Y %H:%M",
+        "%d-%m-%Y %H:%M:%S",
+        "%d-%m-%Y %H:%M",
+        "%m/%d/%Y",
+        "%d/%m/%Y",
         "%Y-%m-%d",
         "%Y/%m/%d",
-        "%m/%d/%Y",
     ]
 
     for fmt in formats:
         try:
             if fmt is None:
-                dt = datetime.fromisoformat(text)
+                dt = datetime.fromisoformat(text_clean)
             else:
-                dt = datetime.strptime(text, fmt)
+                dt = datetime.strptime(text if "/" in fmt else text_clean, fmt)
 
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
@@ -73,36 +85,53 @@ def timestamp_to_milliseconds(value):
     raise ValueError(f"Unsupported timestamp format: {value}")
 
 def get_csv_times(file_path):
-    encodings = ["utf-8-sig", "utf-8", "cp1252"]
+    encodings = ["utf-8-sig", "utf-8", "cp1252", "latin-1"]
+    delimiters = [",", "\t", ";"]
+
     for encoding in encodings:
-        try:
-            with open(file_path, "r", encoding=encoding, newline="") as file:
-                reader = csv.DictReader(file)
-                if not reader.fieldnames:
-                    continue
+        for delimiter in delimiters:
+            try:
+                with open(file_path, "r", encoding=encoding, newline="") as file:
+                    reader = csv.reader(file, delimiter=delimiter)
+                    rows = [row for row in reader if row and any(cell.strip() for cell in row)]
+                    
+                    if not rows:
+                        continue
 
-                time_column = find_time_column(reader.fieldnames)
-                if not time_column:
-                    continue
+                    first_row = rows[0]
+                    first_cell = first_row[0].strip()
 
-                timestamps = []
-                for row in reader:
-                    raw_value = row.get(time_column)
-                    if raw_value and raw_value.strip():
-                        try:
-                            timestamps.append(timestamp_to_milliseconds(raw_value))
-                        except ValueError:
-                            continue
+                    # تشخیص اینکه آیا سطر اول هدر دارد یا مستقیماً داده است
+                    time_col_idx = 0
+                    has_header = False
 
-                if timestamps:
-                    return min(timestamps), max(timestamps)
-        except UnicodeDecodeError:
-            continue
+                    # اگر سطر اول دارای نام‌های ستون معروف باشد
+                    for idx, cell in enumerate(first_row):
+                        if find_time_column([cell]):
+                            time_col_idx = idx
+                            has_header = True
+                            break
 
-    raise RuntimeError(f"Could not extract timestamps from {file_path}")
+                    start_idx = 1 if has_header else 0
+                    timestamps = []
+
+                    for row in rows[start_idx:]:
+                        if len(row) > time_col_idx:
+                            raw_val = row[time_col_idx].strip()
+                            if raw_val:
+                                try:
+                                    timestamps.append(timestamp_to_milliseconds(raw_val))
+                                except ValueError:
+                                    continue
+
+                    if timestamps:
+                        return min(timestamps), max(timestamps)
+            except Exception:
+                continue
+
+    raise RuntimeError(f"Could not extract timestamps from {file_path}.")
 
 def parse_filename(filename):
-    # Base: BTCUSD_D1.csv
     base_match = re.fullmatch(r"(.+?)_(D1|H4)\.csv", filename, re.IGNORECASE)
     if base_match:
         return {
@@ -111,7 +140,6 @@ def parse_filename(filename):
             "patch_number": None,
         }
 
-    # Patch: BTCUSD_D1_update_1.csv
     patch_match = re.fullmatch(r"(.+?)_(D1|H4)_update_(\d+)\.csv", filename, re.IGNORECASE)
     if patch_match:
         return {
@@ -184,7 +212,6 @@ def generate_manifest():
                 "description": patch_description(symbol, tf_code, end_time),
             })
 
-    # سورت کردن پچ‌ها بر اساس شماره update
     for item in symbols.values():
         item["patches"].sort(key=lambda p: int(p["id"].replace("update_", "")))
 
