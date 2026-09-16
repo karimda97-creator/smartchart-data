@@ -1,11 +1,11 @@
 name: Generate and Upload Manifest
 
 on:
-  # 1. اجرا هنگام منتشر شدن یا ویرایش ریلیز
+  # 1. اجرای خودکار هنگام انتشار یا ویرایش ریلیز
   release:
     types: [published, edited]
 
-  # 2. امکان اجرای دستی در صورت نیاز
+  # 2. امکان اجرای دستی از تب Actions
   workflow_dispatch:
 
 permissions:
@@ -13,28 +13,28 @@ permissions:
 
 jobs:
   generate-manifest:
-    # 🛑 شرط اصلی: این مرحله فقط و فقط اگر تگ ریلیز data-v1 باشد اجرا می‌شود
+    # 🛑 شرط اختصاصی: فقط برای تگ data-v1 یا اجرای دستی فعال می‌شود
     if: github.event_name == 'workflow_dispatch' || github.event.release.tag_name == 'data-v1'
     runs-on: ubuntu-latest
 
     steps:
-      # 1. تنظیم نام تگ هدف روی data-v1
+      # 1. تنظیم نام تگ هدف
       - name: Set Target Tag
         run: |
           echo "TARGET_TAG=data-v1" >> $GITHUB_ENV
           echo "Target Release Tag: data-v1"
 
-      # 2. دانلود کد ریپوزیتوری
+      # 2. دانلود سورس‌کد ریپوزیتوری (برای دسترسی به اسکریپت پایتون)
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 3. تنظیم پایتون
+      # 3. تنظیم محیط پایتون
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 4. دانلود تمامی فایل‌های CSV موجود در Assets مربوط به تگ data-v1
+      # 4. دانلود تمامی فایل‌های Assets ریلیز data-v1
       - name: Download CSV Assets from Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -51,17 +51,17 @@ jobs:
           ls -la
           echo "--------------------------------"
 
-      # 5. ساخت مجدد manifest.json
+      # 5. ساخت فایل manifest.json
       - name: Generate manifest.json
         run: |
           python scripts/generate_manifest.py
 
-      # 6. نمایش فایل ساخته شده در لاگ
+      # 6. نمایش فایل مانیفست ساختاریافته در لاگ
       - name: Show generated manifest
         run: |
           cat manifest.json
 
-      # 7. آپلود یا جایگزینی خودکار فایل manifest.json جدید در Assets ریلیز data-v1
+      # 7. آپلود یا جایگزینی خودکار manifest.json در Assets ریلیز data-v1
       - name: Upload or Replace manifest.json in Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
