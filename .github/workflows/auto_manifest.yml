@@ -194,14 +194,100 @@ jobs:
       # 7. Show generated manifest
       # --------------------------------------------------
       - name: Show Generated Manifest
+name: Generate Manifest on Release
+
+on:
+  release:
+    types:
+      - published
+      - edited
+
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Release tag to test
+        required: true
+        default: data-v1
+
+permissions:
+  contents: write
+
+jobs:
+  build-manifest:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set Release Tag
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          MANUAL_TAG: ${{ inputs.tag_name }}
+        run: |
+          if [ -n "$EVENT_TAG" ]; then
+            echo "TAG_NAME=$EVENT_TAG" >> "$GITHUB_ENV"
+          else
+            echo "TAG_NAME=$MANUAL_TAG" >> "$GITHUB_ENV"
+          fi
+
+          echo "Release tag: ${EVENT_TAG:-$MANUAL_TAG}"
+
+      - name: Get CSV files from Release Tag
+        run: |
+          echo "Release tag: $TAG_NAME"
+
+          git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+
+          mkdir -p release_csv
+
+          git ls-tree -r --name-only "$TAG_NAME" | grep -E '\.csv$' > csv_files.txt
+
+          echo "CSV files found in release tag:"
+          cat csv_files.txt
+
+          while IFS= read -r file; do
+            git show "$TAG_NAME:$file" > "release_csv/$(basename "$file")"
+          done < csv_files.txt
+
+          echo
+          echo "CSV files copied:"
+          find release_csv -type f -name "*.csv" -print | sort
+
+      - name: Copy Release CSV files
+        run: |
+          cp release_csv/*.csv .
+
+          echo "CSV files available for manifest generation:"
+          find . -maxdepth 1 -type f -name "*.csv" -print | sort
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Generate Manifest
+        env:
+          REPO: ${{ github.repository }}
+          TAG_NAME: ${{ env.TAG_NAME }}
+        run: |
+          python scripts/generate_manifest.py
+
+      - name: Show Generated Manifest
         run: |
           echo "================ MANIFEST ================"
           cat manifest.json
           echo "=========================================="
 
-      # --------------------------------------------------
-      # 8. Upload manifest to Release Assets
-      # --------------------------------------------------
       - name: Upload Manifest to Release Assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -209,6 +295,7 @@ jobs:
           TAG_NAME: ${{ env.TAG_NAME }}
         run: |
           python scripts/upload_manifest.py
+ python scripts/upload_manifest.py
 -------------------------
       # 8. Upload manifest to Release Assets
       # --------------------------------------------------
