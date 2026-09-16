@@ -1,11 +1,8 @@
 name: Generate and Upload Manifest
 
 on:
-  # رویداد ریلیز با تمام حالات ممکن
   release:
-    types: [published, created, edited, prereleased]
-
-  # امکان اجرای دستی
+    types: [edited, published, created]
   workflow_dispatch:
 
 permissions:
@@ -13,18 +10,21 @@ permissions:
 
 jobs:
   generate-manifest:
-    # اجرا در صورت اجرای دستی یا اگر تگ مربوط به data-v1 باشد
-    if: github.event_name == 'workflow_dispatch' || (github.event.release.tag_name == 'data-v1')
     runs-on: ubuntu-latest
 
     steps:
-      # 1. تنظیم نام تگ هدف
-      - name: Set Target Tag
+      # 1. استخراج هوشمند نام تگ ریلیز
+      - name: Determine Release Tag
         run: |
-          echo "TARGET_TAG=data-v1" >> $GITHUB_ENV
-          echo "Target Release Tag: data-v1"
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="data-v1"
+          fi
+          echo "TARGET_TAG=$TAG" >> $GITHUB_ENV
+          echo "Processing Release Tag: $TAG"
 
-      # 2. دانلود سورس‌کد
+      # 2. دریافت سورس‌کد
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -34,14 +34,14 @@ jobs:
         with:
           python-version: "3.11"
 
-      # 4. دانلود تمام فایل‌های Assets ریلیز
+      # 4. دانلود Assets از ریلیز
       - name: Download CSV Assets from Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p data
           cd data
-          echo "Downloading CSV assets from release: $TARGET_TAG"
+          echo "Downloading CSV assets from release tag: $TARGET_TAG"
           
           gh release download "$TARGET_TAG" \
             --repo "${{ github.repository }}" || true
@@ -51,7 +51,7 @@ jobs:
           ls -la
           echo "--------------------------------"
 
-      # 5. ساخت فایل manifest.json
+      # 5. ساخت مانیفست جدید
       - name: Generate manifest.json
         run: |
           python scripts/generate_manifest.py
@@ -61,12 +61,12 @@ jobs:
         run: |
           cat manifest.json
 
-      # 7. آپلود یا جایگزینی خودکار manifest.json
+      # 7. آپلود و جایگزینی مانیفست در ریلیز
       - name: Upload or Replace manifest.json in Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Uploading updated manifest.json to release $TARGET_TAG..."
+          echo "Uploading manifest.json to release $TARGET_TAG..."
           gh release upload "$TARGET_TAG" manifest.json \
             --clobber \
             --repo "${{ github.repository }}"
