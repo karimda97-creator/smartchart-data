@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag"
+        description: "Release tag (e.g. data-v1)"
         required: true
         default: "data-v1"
 
@@ -16,100 +16,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      # 1. دریافت کدهای پروژه
-      - name: Checkout main
+      # 1. دانلود ریپوزیتوری (برای دسترسی به اسکریپت‌های پایتون)
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 1
 
-      # 2. تعیین تگ Release
-      - name: Set release tag
-        run: |
-          echo "TAG_NAME=${{ inputs.release_tag }}" >> "$GITHUB_ENV"
-          echo "Release tag: ${{ inputs.release_tag }}"
-
-      # 3. نمایش فایل‌های موجود در Release
-      - name: Show Release Assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "======================================"
-          echo "Assets in Release: $TAG_NAME"
-          echo "======================================"
-
-          gh release view "$TAG_NAME" \
-            --json assets \
-            --jq '.assets[].name'
-
-      # 4. دانلود تمام CSVهای Release
-      - name: Download CSV files from Release Assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -e
-
-          echo "======================================"
-          echo "Downloading CSV files"
-          echo "======================================"
-
-          rm -rf data
-          mkdir -p data
-
-          gh release download "$TAG_NAME" \
-            --pattern '*.csv' \
-            --dir data \
-            --clobber
-
-          echo
-          echo "Downloaded CSV files:"
-          echo "--------------------------------------"
-
-          find data -maxdepth 1 -type f -iname '*.csv' \
-            -printf '%f\n' | sort
-
-          echo "--------------------------------------"
-
-          CSV_COUNT=$(find data -maxdepth 1 -type f -iname '*.csv' | wc -l)
-
-          echo "CSV count: $CSV_COUNT"
-
-          if [ "$CSV_COUNT" -eq 0 ]; then
-            echo "ERROR: No CSV files were found in Release Assets."
-            exit 1
-          fi
-
-      # 5. نصب Python
+      # 2. تنظیم پایتون
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 6. نصب requests برای upload_manifest.py
-      - name: Install Python dependencies
+      # 3. دانلود تمام فایل‌های CSV موجود در Release Assets
+      - name: Download CSV Assets from Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ inputs.release_tag }}
         run: |
-          python -m pip install --upgrade pip
-          pip install requests
+          mkdir -p data
+          cd data
+          echo "Downloading CSV assets from release: $TAG_NAME"
+          # دانلود همه فایل‌های CSV ریلیز
+          gh release download "$TAG_NAME" --pattern "*.csv" --repo "$GITHUB_REPOSITORY" || true
+          
+          echo "Downloaded files:"
+          ls -la
 
-      # 7. ساخت manifest.json از روی CSVها
+      # 4. اجرای اسکریپت ساخت مانیفست
       - name: Generate manifest.json
         run: |
           python scripts/generate_manifest.py
 
-      # 8. نمایش manifest ساخته‌شده
+      # 5. نمایش مانیفست جهت اطمینان
       - name: Show generated manifest
         run: |
-          echo "======================================"
-          echo "Generated manifest.json"
-          echo "======================================"
           cat manifest.json
 
-      # 9. آپلود manifest.json به همان Release
-      - name: Upload manifest to Release Assets
+      # 6. آپلود/جایگزینی مانیفست در Release Assets
+      - name: Upload or Replace manifest.json in Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          TAG_NAME: ${{ env.TAG_NAME }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ inputs.release_tag }}
         run: |
-          python scripts/upload_manifest.py
+          echo "Uploading manifest.json to release $TAG_NAME..."
+          # سوییچ clobber فایل قبلی را با همین نام اوررایت می‌کند
+          gh release upload "$TAG_NAME" manifest.json --clobber --repo "$GITHUB_REPOSITORY"
