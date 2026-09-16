@@ -1,62 +1,72 @@
 name: Generate and Upload Manifest
 
 on:
+  # 1. اجرا هنگام منتشر شدن یا ویرایش ریلیز
+  release:
+    types: [published, edited]
+
+  # 2. امکان اجرای دستی در صورت نیاز
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Release tag (e.g. data-v1)"
-        required: true
-        default: "data-v1"
 
 permissions:
   contents: write
 
 jobs:
   generate-manifest:
+    # 🛑 شرط اصلی: این مرحله فقط و فقط اگر تگ ریلیز data-v1 باشد اجرا می‌شود
+    if: github.event_name == 'workflow_dispatch' || github.event.release.tag_name == 'data-v1'
     runs-on: ubuntu-latest
 
     steps:
-      # 1. دانلود ریپوزیتوری (برای دسترسی به اسکریپت‌های پایتون)
+      # 1. تنظیم نام تگ هدف روی data-v1
+      - name: Set Target Tag
+        run: |
+          echo "TARGET_TAG=data-v1" >> $GITHUB_ENV
+          echo "Target Release Tag: data-v1"
+
+      # 2. دانلود کد ریپوزیتوری
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. تنظیم پایتون
+      # 3. تنظیم پایتون
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 3. دانلود تمام فایل‌های CSV موجود در Release Assets
+      # 4. دانلود تمامی فایل‌های CSV موجود در Assets مربوط به تگ data-v1
       - name: Download CSV Assets from Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ inputs.release_tag }}
         run: |
           mkdir -p data
           cd data
-          echo "Downloading CSV assets from release: $TAG_NAME"
-          # دانلود همه فایل‌های CSV ریلیز
-          gh release download "$TAG_NAME" --pattern "*.csv" --repo "$GITHUB_REPOSITORY" || true
+          echo "Downloading CSV assets from release: $TARGET_TAG"
           
-          echo "Downloaded files:"
-          ls -la
+          gh release download "$TARGET_TAG" \
+            --repo "${{ github.repository }}" || true
 
-      # 4. اجرای اسکریپت ساخت مانیفست
+          echo "--------------------------------"
+          echo "Downloaded files list:"
+          ls -la
+          echo "--------------------------------"
+
+      # 5. ساخت مجدد manifest.json
       - name: Generate manifest.json
         run: |
           python scripts/generate_manifest.py
 
-      # 5. نمایش مانیفست جهت اطمینان
+      # 6. نمایش فایل ساخته شده در لاگ
       - name: Show generated manifest
         run: |
           cat manifest.json
 
-      # 6. آپلود/جایگزینی مانیفست در Release Assets
+      # 7. آپلود یا جایگزینی خودکار فایل manifest.json جدید در Assets ریلیز data-v1
       - name: Upload or Replace manifest.json in Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ inputs.release_tag }}
         run: |
-          echo "Uploading manifest.json to release $TAG_NAME..."
-          # سوییچ clobber فایل قبلی را با همین نام اوررایت می‌کند
-          gh release upload "$TAG_NAME" manifest.json --clobber --repo "$GITHUB_REPOSITORY"
+          echo "Uploading updated manifest.json to release $TARGET_TAG..."
+          gh release upload "$TARGET_TAG" manifest.json \
+            --clobber \
+            --repo "${{ github.repository }}"
