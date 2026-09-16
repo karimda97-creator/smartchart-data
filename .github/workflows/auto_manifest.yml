@@ -3,7 +3,13 @@ name: Generate Manifest on Release
 on:
 release:
 types: [published, edited]
+
 workflow_dispatch:
+inputs:
+tag_name:
+description: "Release tag to test"
+required: true
+default: "test"
 
 permissions:
 contents: write
@@ -26,18 +32,29 @@ steps:
       python -m pip install --upgrade pip
       pip install requests
 
+  - name: Set Release Tag
+    id: release_tag
+    env:
+      EVENT_TAG: ${{ github.event.release.tag_name }}
+      MANUAL_TAG: ${{ inputs.tag_name }}
+    run: |
+      if [ -n "$EVENT_TAG" ]; then
+        echo "TAG_NAME=$EVENT_TAG" >> "$GITHUB_ENV"
+      else
+        echo "TAG_NAME=$MANUAL_TAG" >> "$GITHUB_ENV"
+      fi
+
   - name: Generate Manifest
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TAG_NAME: ${{ github.event.release.tag_name }}
       REPO: ${{ github.repository }}
+      TAG_NAME: ${{ env.TAG_NAME }}
     run: |
       python scripts/generate_manifest.py
 
   - name: Upload Manifest to Release
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TAG_NAME: ${{ github.event.release.tag_name }}
       REPO: ${{ github.repository }}
+      TAG_NAME: ${{ env.TAG_NAME }}
     run: |
       python scripts/upload_manifest.py
