@@ -1,11 +1,11 @@
 name: Generate and Upload Manifest
 
 on:
-  # 1. اجرای خودکار هنگام انتشار یا ویرایش ریلیز
+  # رویداد ریلیز با تمام حالات ممکن
   release:
-    types: [published, edited]
+    types: [published, created, edited, prereleased]
 
-  # 2. امکان اجرای دستی از تب Actions
+  # امکان اجرای دستی
   workflow_dispatch:
 
 permissions:
@@ -13,8 +13,8 @@ permissions:
 
 jobs:
   generate-manifest:
-    # 🛑 شرط اختصاصی: فقط برای تگ data-v1 یا اجرای دستی فعال می‌شود
-    if: github.event_name == 'workflow_dispatch' || github.event.release.tag_name == 'data-v1'
+    # اجرا در صورت اجرای دستی یا اگر تگ مربوط به data-v1 باشد
+    if: github.event_name == 'workflow_dispatch' || (github.event.release.tag_name == 'data-v1')
     runs-on: ubuntu-latest
 
     steps:
@@ -24,17 +24,17 @@ jobs:
           echo "TARGET_TAG=data-v1" >> $GITHUB_ENV
           echo "Target Release Tag: data-v1"
 
-      # 2. دانلود سورس‌کد ریپوزیتوری (برای دسترسی به اسکریپت پایتون)
+      # 2. دانلود سورس‌کد
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 3. تنظیم محیط پایتون
+      # 3. تنظیم پایتون
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 4. دانلود تمامی فایل‌های Assets ریلیز data-v1
+      # 4. دانلود تمام فایل‌های Assets ریلیز
       - name: Download CSV Assets from Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,12 +56,12 @@ jobs:
         run: |
           python scripts/generate_manifest.py
 
-      # 6. نمایش فایل مانیفست ساختاریافته در لاگ
+      # 6. نمایش مانیفست
       - name: Show generated manifest
         run: |
           cat manifest.json
 
-      # 7. آپلود یا جایگزینی خودکار manifest.json در Assets ریلیز data-v1
+      # 7. آپلود یا جایگزینی خودکار manifest.json
       - name: Upload or Replace manifest.json in Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
