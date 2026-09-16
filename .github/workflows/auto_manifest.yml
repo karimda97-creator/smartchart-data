@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: Release tag to test
+        description: Release tag to update
         required: true
         default: data-v1
 
@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Set Release Tag
         env:
@@ -41,33 +41,10 @@ jobs:
 
           echo "Release tag: ${EVENT_TAG:-$MANUAL_TAG}"
 
-      - name: Get CSV files from Release Tag
+      - name: Show CSV files
         run: |
-          echo "Release tag: $TAG_NAME"
-
-          git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
-
-          mkdir -p release_csv
-
-          git ls-tree -r --name-only "$TAG_NAME" | grep -E '\.csv$' > csv_files.txt
-
-          echo "CSV files found in release tag:"
-          cat csv_files.txt
-
-          while IFS= read -r file; do
-            git show "$TAG_NAME:$file" > "release_csv/$(basename "$file")"
-          done < csv_files.txt
-
-          echo
-          echo "CSV files copied:"
-          find release_csv -type f -name "*.csv" -print | sort
-
-      - name: Copy Release CSV files
-        run: |
-          cp release_csv/*.csv .
-
-          echo "CSV files available for manifest generation:"
-          find . -maxdepth 1 -type f -name "*.csv" -print | sort
+          echo "CSV files found in main:"
+          find . -type f -name "*.csv" -not -path "./.git/*" -print | sort
 
       - name: Set up Python
         uses: actions/setup-python@v5
