@@ -128,7 +128,9 @@ def timestamp_to_milliseconds(value):
         try:
 
             if fmt is None:
-                dt = datetime.fromisoformat(text_clean)
+                dt = datetime.fromisoformat(
+                    text_clean
+                )
 
             else:
 
@@ -306,14 +308,6 @@ def parse_filename(filename):
 
     # ------------------------------------------------------------
     # Base file
-    #
-    # SYMBOL_M1.csv
-    # SYMBOL_M5.csv
-    # SYMBOL_M15.csv
-    # SYMBOL_M30.csv
-    # SYMBOL_H1.csv
-    # SYMBOL_H4.csv
-    # SYMBOL_D1.csv
     # ------------------------------------------------------------
 
     base_match = re.fullmatch(
@@ -332,14 +326,6 @@ def parse_filename(filename):
 
     # ------------------------------------------------------------
     # Patch file
-    #
-    # SYMBOL_M1_update_1.csv
-    # SYMBOL_M5_update_2.csv
-    # SYMBOL_M15_update_3.csv
-    # SYMBOL_M30_update_1.csv
-    # SYMBOL_H1_update_1.csv
-    # SYMBOL_H4_update_2.csv
-    # SYMBOL_D1_update_1.csv
     # ------------------------------------------------------------
 
     patch_match = re.fullmatch(
@@ -371,13 +357,13 @@ def manifest_key(
 ):
 
     mapping = {
-        "M1": "1M",
-        "M5": "5M",
-        "M15": "15M",
-        "M30": "30M",
-        "H1": "1H",
-        "H4": "4H",
         "D1": "1D",
+        "H4": "4H",
+        "H1": "1H",
+        "M30": "30M",
+        "M15": "15M",
+        "M5": "5M",
+        "M1": "1M",
     }
 
     if timeframe_code not in mapping:
@@ -400,13 +386,13 @@ def timeframe_value(
 ):
 
     mapping = {
-        "M1": "1m",
-        "M5": "5m",
-        "M15": "15m",
-        "M30": "30m",
-        "H1": "1h",
-        "H4": "4h",
         "D1": "1d",
+        "H4": "4h",
+        "H1": "1h",
+        "M30": "30m",
+        "M15": "15m",
+        "M5": "5m",
+        "M1": "1m",
     }
 
     if timeframe_code not in mapping:
@@ -434,13 +420,13 @@ def patch_description(
     ).strftime("%d %B %Y")
 
     timeframe_names = {
-        "M1": "یک‌دقیقه‌ای",
-        "M5": "پنج‌دقیقه‌ای",
-        "M15": "پانزده‌دقیقه‌ای",
-        "M30": "سی‌دقیقه‌ای",
-        "H1": "یک‌ساعته",
-        "H4": "چهارساعته",
         "D1": "روزانه",
+        "H4": "چهارساعته",
+        "H1": "یک‌ساعته",
+        "M30": "سی‌دقیقه‌ای",
+        "M15": "پانزده‌دقیقه‌ای",
+        "M5": "پنج‌دقیقه‌ای",
+        "M1": "یک‌دقیقه‌ای",
     }
 
     tf_name = timeframe_names.get(
@@ -534,7 +520,7 @@ def generate_manifest():
         )
 
         # --------------------------------------------------------
-        # Create entry
+        # Create symbol/timeframe entry
         # --------------------------------------------------------
 
         if key not in symbols:
@@ -565,7 +551,9 @@ def generate_manifest():
         # --------------------------------------------------------
 
         start_time, end_time = (
-            get_csv_times(file_path)
+            get_csv_times(
+                file_path
+            )
         )
 
         size_bytes = os.path.getsize(
@@ -629,7 +617,9 @@ def generate_manifest():
 
             symbols[key][
                 "patches"
-            ].append(patch)
+            ].append(
+                patch
+            )
 
             print(
                 f"PATCH {filename} | "
@@ -646,8 +636,7 @@ def generate_manifest():
         item["patches"].sort(
             key=lambda patch:
                 int(
-                    patch["id"]
-                    .replace(
+                    patch["id"].replace(
                         "update_",
                         ""
                     )
@@ -655,19 +644,52 @@ def generate_manifest():
         )
 
     # --------------------------------------------------------
+    # Sort symbols
+    #
+    # Timeframe order:
+    #
+    # D1
+    # H4
+    # H1
+    # M30
+    # M15
+    # M5
+    # M1
+    #
+    # Symbols are sorted alphabetically.
+    # Timeframes inside each symbol are high → low.
+    # --------------------------------------------------------
+
+    timeframe_order = {
+        "1d": 0,
+        "4h": 1,
+        "1h": 2,
+        "30m": 3,
+        "15m": 4,
+        "5m": 5,
+        "1m": 6,
+    }
+
+    sorted_symbols = dict(
+        sorted(
+            symbols.items(),
+            key=lambda item: (
+                item[1]["symbol"],
+                timeframe_order.get(
+                    item[1]["timeframe"],
+                    999
+                )
+            )
+        )
+    )
+
+    # --------------------------------------------------------
     # Final manifest
     # --------------------------------------------------------
 
     return {
-
         "version": 1,
-
-        "symbols":
-            dict(
-                sorted(
-                    symbols.items()
-                )
-            ),
+        "symbols": sorted_symbols
     }
 
 
@@ -690,7 +712,7 @@ def main():
     )
 
     print(
-        "M1 M5 M15 M30 H1 H4 D1"
+        "D1 H4 H1 M30 M15 M5 M1"
     )
 
     print(
